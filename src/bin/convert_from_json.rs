@@ -17,7 +17,7 @@ struct Args {
     ///
     /// One convenient way to prepare this list in bash is as follows, assuming
     /// shards are in a directory called `vectors/`:
-    /// $ ... --collection `ls vectors/*json.gz | tr '\n' ',' | sed 's/,*$//g'`
+    /// $ ... --data-points `ls vectors/*json.gz | tr '\n' ',' | sed 's/,*$//g'`
     #[clap(
         long,
         use_value_delimiter = true,
@@ -121,7 +121,7 @@ impl JsonVector {
     }
 }
 
-fn read_data(paths: &[String], max_dimension: usize) -> anyhow::Result<CsMat<f32>> {
+fn read_data(paths: &[String], max_dimension: Option<usize>) -> anyhow::Result<CsMat<f32>> {
     let mut triplets_ids: Vec<usize> = vec![];
     let mut triplets_coordinates: Vec<usize> = vec![];
     let mut triplets_values: Vec<f32> = vec![];
@@ -152,8 +152,10 @@ fn read_data(paths: &[String], max_dimension: usize) -> anyhow::Result<CsMat<f32
             }
 
             coordinates.iter().enumerate().for_each(|(i, &coordinate)| {
-                if coordinate >= max_dimension {
-                    return;
+                if let Some(max_dimension) = max_dimension {
+                    if coordinate >= max_dimension {
+                        return;
+                    }
                 }
                 triplets_ids.push(id);
                 triplets_coordinates.push(coordinate);
@@ -167,7 +169,7 @@ fn read_data(paths: &[String], max_dimension: usize) -> anyhow::Result<CsMat<f32
     }
 
     let sparse = TriMat::from_triplets(
-        (id, num_dimensions),
+        (id, max_dimension.unwrap_or(num_dimensions)),
         triplets_ids,
         triplets_coordinates,
         triplets_values,
@@ -233,7 +235,7 @@ fn attach_gt(dataset: &InMemoryAnnDataset<f32>, query_set: &mut QuerySet<f32>, t
 fn main() {
     let args = Args::parse();
 
-    let sparse = read_data(&args.data_points, usize::MAX).expect("Unable to read data points.");
+    let sparse = read_data(&args.data_points, None).expect("Unable to read data points.");
     let num_dimensions = sparse.cols();
     let data_points =
         PointSet::new(None, Some(sparse)).expect("Failed to create a point set from data points.");
@@ -242,7 +244,7 @@ fn main() {
 
     if let Some(train) = args.train_query_points {
         println!("Processing train query points...");
-        let sparse = read_data(&[train.clone()], num_dimensions)
+        let sparse = read_data(&[train.clone()], Some(num_dimensions))
             .unwrap_or_else(|_| panic!("Failed to read query points labeled '{}'", &train));
         let query_points = PointSet::new(None, Some(sparse))
             .unwrap_or_else(|_| panic!("Failed to create query point set '{}'", &train));
@@ -254,7 +256,7 @@ fn main() {
 
     if let Some(validation) = args.validation_query_points {
         println!("Processing validation query points...");
-        let sparse = read_data(&[validation.clone()], num_dimensions)
+        let sparse = read_data(&[validation.clone()], Some(num_dimensions))
             .unwrap_or_else(|_| panic!("Failed to read query points labeled '{}'", &validation));
         let query_points = PointSet::new(None, Some(sparse))
             .unwrap_or_else(|_| panic!("Failed to create query point set '{}'", &validation));
@@ -266,7 +268,7 @@ fn main() {
 
     if let Some(test) = args.test_query_points {
         println!("Processing test query points...");
-        let sparse = read_data(&[test.clone()], num_dimensions)
+        let sparse = read_data(&[test.clone()], Some(num_dimensions))
             .unwrap_or_else(|_| panic!("Failed to read query points labeled '{}'", &test));
         let query_points = PointSet::new(None, Some(sparse))
             .unwrap_or_else(|_| panic!("Failed to create query point set '{}'", &test));
