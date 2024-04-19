@@ -1,8 +1,8 @@
 use ann_dataset::{AnnDataset, Hdf5File, InMemoryAnnDataset, Metric, PointSet, QuerySet};
+use ann_dataset_converter::util::{get_largest, new_progress_bar};
 use clap::Parser;
 use linfa_linalg::norm::Norm;
 use ndarray::{Array1, Array2, Axis, Zip};
-use ann_dataset_converter::util::{get_largest, new_progress_bar};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]

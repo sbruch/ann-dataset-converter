@@ -1,14 +1,14 @@
-use std::cmp::max;
 use ann_dataset::{AnnDataset, Hdf5File, InMemoryAnnDataset, Metric, PointSet, QuerySet};
+use ann_dataset_converter::util::{get_largest, new_progress_bar};
+use anyhow::anyhow;
 use clap::Parser;
+use flate2::read::GzDecoder;
 use ndarray::{Array1, Array2, Axis, Zip};
+use serde::Deserialize;
+use sprs::{CsMat, TriMat};
+use std::cmp::max;
 use std::fs::File;
 use std::io::BufReader;
-use anyhow::anyhow;
-use flate2::read::GzDecoder;
-use sprs::{CsMat, TriMat};
-use serde::Deserialize;
-use ann_dataset_converter::util::{get_largest, new_progress_bar};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -18,7 +18,12 @@ struct Args {
     /// One convenient way to prepare this list in bash is as follows, assuming
     /// shards are in a directory called `vectors/`:
     /// $ ... --collection `ls vectors/*json.gz | tr '\n' ',' | sed 's/,*$//g'`
-    #[clap(long, use_value_delimiter = true, value_delimiter = ',', required = true)]
+    #[clap(
+        long,
+        use_value_delimiter = true,
+        value_delimiter = ',',
+        required = true
+    )]
     data_points: Vec<String>,
 
     /// Path to train query points.
@@ -89,8 +94,10 @@ impl JsonVector {
                 let mut indices = (0..coordinates.len()).collect::<Vec<usize>>();
                 indices.sort_by_key(|&i| coordinates[i]);
 
-                (indices.iter().map(|&i| coordinates[i]).collect(),
-                 indices.iter().map(|&i| values[i]).collect())
+                (
+                    indices.iter().map(|&i| coordinates[i]).collect(),
+                    indices.iter().map(|&i| values[i]).collect(),
+                )
             }
             JsonVector::SingleInt {
                 id: _,
@@ -105,8 +112,10 @@ impl JsonVector {
                 let mut indices = (0..coordinates.len()).collect::<Vec<usize>>();
                 indices.sort_by_key(|&i| coordinates[i]);
 
-                (indices.iter().map(|&i| coordinates[i]).collect(),
-                 indices.iter().map(|&i| values[i]).collect())
+                (
+                    indices.iter().map(|&i| coordinates[i]).collect(),
+                    indices.iter().map(|&i| values[i]).collect(),
+                )
             }
         }
     }
@@ -122,7 +131,7 @@ fn read_data(paths: &[String], max_dimension: usize) -> anyhow::Result<CsMat<f32
 
     for path in paths {
         println!("Reading data from {}", path);
-        let f = File::open(path).expect(&format!("Unable to open {}", path));
+        let f = File::open(path).unwrap_or_else(|_| panic!("Unable to open {}", path));
         let json_collection: JsonCollection = if path.ends_with("gz") {
             let reader = BufReader::new(GzDecoder::new(f));
             serde_json::from_reader(reader)?
@@ -134,8 +143,12 @@ fn read_data(paths: &[String], max_dimension: usize) -> anyhow::Result<CsMat<f32
         json_collection.vectors.iter().try_for_each(|vector| {
             let (coordinates, values) = vector.get_coordinates_values();
             if coordinates.len() != values.len() {
-                return Err(anyhow!(format!("Vector with id {} has {} coordinates but {} values",
-                id, coordinates.len(), values.len())));
+                return Err(anyhow!(format!(
+                    "Vector with id {} has {} coordinates but {} values",
+                    id,
+                    coordinates.len(),
+                    values.len()
+                )));
             }
 
             coordinates.iter().enumerate().for_each(|(i, &coordinate)| {
@@ -154,7 +167,11 @@ fn read_data(paths: &[String], max_dimension: usize) -> anyhow::Result<CsMat<f32
     }
 
     let sparse = TriMat::from_triplets(
-        (id, num_dimensions), triplets_ids, triplets_coordinates, triplets_values);
+        (id, num_dimensions),
+        triplets_ids,
+        triplets_coordinates,
+        triplets_values,
+    );
     let sparse: CsMat<_> = sparse.to_csr();
     Ok(sparse)
 }
@@ -168,9 +185,11 @@ fn find_gts(
     let mut gt_cosine = Array2::<usize>::zeros((queries.rows(), k));
     let mut gt_ip = Array2::<usize>::zeros((queries.rows(), k));
 
-    let norms = Array1::from(data.outer_iterator().map(|point| {
-        point.l2_norm()
-    }).collect::<Vec<_>>());
+    let norms = Array1::from(
+        data.outer_iterator()
+            .map(|point| point.l2_norm())
+            .collect::<Vec<_>>(),
+    );
 
     let queries = queries.outer_iterator().collect::<Vec<_>>();
 
@@ -214,8 +233,7 @@ fn attach_gt(dataset: &InMemoryAnnDataset<f32>, query_set: &mut QuerySet<f32>, t
 fn main() {
     let args = Args::parse();
 
-    let sparse = read_data(&args.data_points, usize::MAX)
-        .expect("Unable to read data points.");
+    let sparse = read_data(&args.data_points, usize::MAX).expect("Unable to read data points.");
     let num_dimensions = sparse.cols();
     let data_points =
         PointSet::new(None, Some(sparse)).expect("Failed to create a point set from data points.");
