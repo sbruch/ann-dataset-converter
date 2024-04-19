@@ -1,0 +1,14 @@
+[package]
+name = "ann_dataset_converter"
+version = "0.1.1"
+edition = "2021"
+
+[dependencies]
+ndarray = { version = "0.15.6", features = ["serde", "rayon"] }
+linfa-linalg = "0.1.0"
+sprs = { version = "0.11.1", features = ["serde"] }
+hdf5 = "0.8.1"
+anyhow = "1.0.82"
+clap = {  version = "4.5.4", features = ["derive"] }
+indicatif = { version = "0.16", features = ["rayon"] }
+ann_dataset = "0.1.1"
