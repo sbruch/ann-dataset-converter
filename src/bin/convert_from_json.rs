@@ -162,7 +162,7 @@ fn read_data(paths: &[String], max_dimension: Option<usize>) -> anyhow::Result<C
                 triplets_values.push(values[i]);
             });
 
-            num_dimensions = max(num_dimensions, *coordinates.iter().max().unwrap() + 1);
+            num_dimensions = max(num_dimensions, *coordinates.iter().max().unwrap_or(&0) + 1);
             id += 1;
             anyhow::Ok(())
         })?;
