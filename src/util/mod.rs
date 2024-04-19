@@ -1,6 +1,6 @@
+use ndarray::{Array1, ArrayView1};
 use std::cmp::{Ordering, Reverse};
 use std::collections::BinaryHeap;
-use ndarray::{Array1, ArrayView1};
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub struct SearchResult {
