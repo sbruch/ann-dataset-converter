@@ -201,7 +201,7 @@ fn find_gts(
         .and(gt_ip.axis_iter_mut(Axis(0)))
         .par_for_each(|query_id, mut gt_euclidean, mut gt_cosine, mut gt_ip| {
             let query = queries[query_id];
-            let scores = (data * &query).to_dense();
+            let scores = Array1::from((data * &query).to_dense().to_vec());
             gt_ip.assign(&get_largest(scores.view(), k));
             gt_cosine.assign(&get_largest((&scores / &norms).view(), k));
             gt_euclidean.assign(&get_largest((-&norms * &norms + 2_f32 * &scores).view(), k));

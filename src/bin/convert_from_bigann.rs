@@ -3,6 +3,8 @@ use ann_dataset_converter::util::{get_largest, new_progress_bar};
 use clap::Parser;
 use linfa_linalg::norm::Norm;
 use ndarray::{Array1, Array2, Axis, Zip};
+use rand::prelude::{SliceRandom, StdRng};
+use rand::SeedableRng;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -26,6 +28,11 @@ struct Args {
     /// Label of test query points.
     #[clap(long)]
     test_query_points: Option<String>,
+
+    /// Sample a number of data points, remove them from the dataset,
+    /// and use them as test queries.
+    #[clap(long)]
+    sample_test_queries: Option<usize>,
 
     /// Top-k nearest neighbors to add as ground truth.
     #[clap(long, required = true)]
@@ -103,12 +110,37 @@ fn attach_gt(dataset: &InMemoryAnnDataset<f32>, query_set: &mut QuerySet<f32>, t
 fn main() {
     let args = Args::parse();
 
+    if args.sample_test_queries.is_some() && args.test_query_points.is_some() {
+        panic!("Only one of --sample-test-queries or --test-query-points can be used");
+    }
+
     let dense = read_data(args.path.as_str(), args.data_points.as_str())
         .expect("Unable to read data points.");
-    let data_points =
-        PointSet::new(Some(dense), None).expect("Failed to create a point set from data points.");
+
+    let samples = args.sample_test_queries.unwrap_or(0);
+
+    let mut rng = StdRng::seed_from_u64(42);
+    let mut point_indexes: Vec<usize> = (0..dense.nrows()).collect();
+    point_indexes.shuffle(&mut rng);
+    let data_point_indexes = point_indexes[..point_indexes.len() - samples].to_vec();
+    let test_point_indexes = point_indexes[point_indexes.len() - samples..].to_vec();
+    let data_points = dense.select(Axis(0), &data_point_indexes);
+
+    let data_points = PointSet::new(Some(data_points), None)
+        .expect("Failed to create a point set from data points.");
 
     let mut dataset = InMemoryAnnDataset::create(data_points);
+
+    if samples > 0 {
+        println!("Processing test query points...");
+        let test_points = dense.select(Axis(0), &test_point_indexes);
+        let query_points = PointSet::new(Some(test_points), None)
+            .unwrap_or_else(|_| panic!("Failed to create query point set"));
+        let mut query_set = QuerySet::new(query_points);
+
+        attach_gt(&dataset, &mut query_set, args.top_k);
+        dataset.add_test_query_set(query_set);
+    }
 
     if let Some(train) = args.train_query_points {
         println!("Processing train query points...");
